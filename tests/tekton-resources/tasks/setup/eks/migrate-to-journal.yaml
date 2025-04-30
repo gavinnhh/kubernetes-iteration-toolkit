@@ -1,0 +1,42 @@
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: migrate-to-journal
+  namespace: scalability
+spec:
+  description: "Task to run migration from raft to journal on one cluster. \n"
+  params:
+  - description: The name of the EKS cluster you want to run etcd migration to journal.
+    name: cluster-name
+    type: string
+  - default: us-west-2
+    description: The region where the cluster is in.
+    name: region
+    type: string
+  - description: s3 path to download the binary from.
+    name: eksadm-s3-path
+    type: string
+  - description: Indicates the cluster will be migrated to journal/obelisk for testing.
+    name: is-obelisk
+    type: string
+  steps:
+  - computeResources: {}
+    image: alpine/k8s:1.30.0
+    name: migrate-to-journal
+    script: |
+      set -x
+      if [ "$(params.is-obelisk)" = "false" ]; then
+        echo "is-obelisk is false, skip migrating to journal..."
+        exit 0
+      fi
+      apk update
+      apk add --no-cache jq
+      # Needed by eksadm
+      apk add --no-cache libc6-compat
+      # Download eksadm binary to run the migration
+      aws s3 cp $(params.eksadm-s3-path) ./eksadm
+      chmod +x eksadm
+      account=$(aws sts get-caller-identity | jq -r .Account)
+      clusterarn="arn:aws:eks:$(params.region):$account:cluster/$(params.cluster-name)"
+      echo "Migrating from raft to journal..."
+      ./eksadm migrateEtcdToJournal --cluster-arn $clusterarn

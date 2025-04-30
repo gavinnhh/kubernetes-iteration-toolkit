@@ -96,6 +96,17 @@ spec:
     type: string
   - name: ng-cfn-url-monitoring
     default: "https://raw.githubusercontent.com/awslabs/kubernetes-iteration-toolkit/main/tests/assets/eks_node_group_launch_template.json"
+  - name: is-obelisk
+    default: "false"
+    type: string
+    description: "Indicates the cluster will be migrated to journal/obelisk for testing."
+  - default: s3://journal-migration/EksAdm_linux_amd64
+    name: eksadm-s3-path
+    type: string
+    description: "The s3 path to the EKSADM binary for journal migration. This binary has been uploaded to S3 bucket in 197575167141"
+  - default: us-west-2
+    name: region
+    type: string
   tasks:
   - name: slack-notification
     params:
@@ -164,6 +175,22 @@ spec:
     workspaces:
     - name: config
       workspace: config
+  - name: migrate-to-journal
+    params:
+    - name: cluster-name
+      value: $(params.cluster-name)
+    - name: eksadm-s3-path
+      value: $(params.eksadm-s3-path)
+    - name: region
+      value: $(params.region)
+    - name: is-obelisk
+      value: $(params.is-obelisk)
+    retries: 3
+    runAfter:
+    - create-eks-cluster
+    taskRef:
+      kind: Task
+      name: migrate-to-journal
   - name: create-launch-template-monitoring-nodes
     params:
       - name: cluster-name
@@ -177,7 +204,7 @@ spec:
       - name: endpoint
         value: $(params.endpoint)
     runAfter:
-      - create-eks-cluster
+      - migrate-to-journal
     taskRef:
       kind: Task
       name: awscli-eks-cfn-launch-template
